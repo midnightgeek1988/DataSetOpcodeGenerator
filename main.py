@@ -7,7 +7,12 @@ from collections import Counter
 from datetime import datetime
 import os
 import re
-
+import urllib
+import urllib2
+from shutil import copyfile
+import unicodedata
+import time
+import json
 
 def get_all_files_in_directory(directory):
     return [temp for (dir_path, dir_names, file_names) in walk(directory) for temp in file_names]
@@ -131,8 +136,49 @@ def fill_samples_table(repo):
 
 
 def update_samples_label(repo):
-    pass
+    db = DatabaseHandler()
+    samples = db.select_sample_all()
+    for item in samples:
+        isSend = False
+        while not isSend:
+            lable = make_virus_total_request(item[1].split('.')[0])
+            if 'Forbidden' != lable:
+                shash = unicodedata.normalize('NFKD', item[1]).encode('ascii', 'ignore')
+                rowcount = db.update_sample_lable(shash, lable)
+                print item[0], ' -> ', item[1], " : ", lable, ' RowCount : ', str(rowcount)
+                if (int(lable) == 0):
+                    copyfile(repo + item[1], repo + "0/" + item[1])
+                elif (int(lable) == 1):
+                    copyfile(repo + item[1], repo + "1/" + item[1])
+                elif int(lable) > 1 and int(lable) <= 5:
+                    copyfile(repo + item[1], repo + "5/" + item[1])
+                elif int(lable) > 5 and int(lable) <= 10:
+                    copyfile(repo + item[1], repo + "10/" + item[1])
+                else:
+                    copyfile(repo + item[1], repo + "more/" + item[1])
+                isSend = True
+            else:
+                print item[0], ' -> ', item[1], ' : Forbidden'
+                time.sleep(120)
 
+
+def make_virus_total_request(hash, db=None):
+    try:
+        params = {'apikey': 'YOUR_KEY', 'resource': hash}
+        data = urllib.urlencode(params)
+        result = urllib2.urlopen('https://www.virustotal.com/vtapi/v2/file/report', data)
+        jdata = json.loads(result.read())
+        return parse(jdata, hash)
+    except Exception as e:
+        print e
+        return 'Forbidden'
+
+def parse(it, md5, verbose=True, jsondump=True):
+    if it['response_code'] == 0:
+        print md5 + " -- Not Found in VT"
+        return 0
+    else:
+        return it['positives']
 
 def extract_opcode(path_to_dir):
     logger("Start extract opcode")
