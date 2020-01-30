@@ -13,6 +13,8 @@ from shutil import copyfile
 import unicodedata
 import time
 import json
+import operator
+import itertools 
 
 def get_all_files_in_directory(directory):
     return [temp for (dir_path, dir_names, file_names) in walk(directory) for temp in file_names]
@@ -23,7 +25,7 @@ def get_all_files_with_path_in_directory(directory):
             in file_names if file_names]
 
 
-def write_arff(dataset, class1, class2):
+def write_arff(dataset, class1, class2, class_top):
     logger("Start write arff")
     final_op_set = []
     opcode_bank = {}
@@ -62,7 +64,9 @@ def write_arff(dataset, class1, class2):
     for opc_i in final_op_set:
         for opc_j in final_op_set:
             name = str(opc_i) + str(opc_j)
-            data_fp.write("@ATTRIBUTE %s NUMERIC \n" % name)
+            name_ch = str(opc_i) +" "+ str(opc_j)
+            if ((len([item_t for item_t in class_top if item_t[0] == name_ch])==1)):
+                data_fp.write("@ATTRIBUTE %s NUMERIC \n" % name)
     data_fp.write("@ATTRIBUTE Class1 {mal,bin} \n")
     data_fp.write("\n")
     data_fp.write("@DATA")
@@ -71,36 +75,28 @@ def write_arff(dataset, class1, class2):
     for item in class1:
         for opc_i in final_op_set:
             for opc_j in final_op_set:
-                x = opcode_bank[opc_i]
-                y = opcode_bank[opc_j]
                 key = str(str(opc_i) + " " + str(opc_j))
                 # print key
-                if key in item:
-                    data_fp.write(str(item[str(opc_i) + " " + str(opc_j)]) + ",")
-                else:
-                    data_fp.write("0" + ",")
+                if (len([item_t for item_t in class_top if item_t[0] == key])==1):
+                    if key in item:
+                        data_fp.write(str(item[str(opc_i) + " " + str(opc_j)]) + ",")
+                    else:
+                        data_fp.write("0" + ",")
         data_fp.write("mal")
         data_fp.write("\n")
 
     for item in class2:
         for opc_i in final_op_set:
             for opc_j in final_op_set:
-                x = opcode_bank[opc_i]
-                y = opcode_bank[opc_j]
                 key = str(str(opc_i) + " " + str(opc_j))
-                # print key
-                if key in item:
-                    data_fp.write(str(item[str(opc_i) + " " + str(opc_j)]) + ",")
-                else:
-                    data_fp.write("0" + ",")
+                if (len([item_t for item_t in class_top if item_t[0] == key])==1):
+                    if key in item:
+                        data_fp.write(str(item[str(opc_i) + " " + str(opc_j)]) + ",")
+                    else:
+                        data_fp.write("0" + ",")
         data_fp.write("bin")
         data_fp.write("\n")
     logger("End write arff")
-
-
-def cal_p(x, y):
-    return
-
 
 def weight_function(dataset_sample_opcode_sequence, dataset_sample_opcodes, table_opcode_sequence):
     logger("Start weight function")
@@ -224,9 +220,12 @@ def opcode_sequence_generator(repo, dump_method_dir):
     sample_bin_name = []
     sample_mal_name = []
     seen = set()
-    logger("Start Process : ")
+    logger("Start Process : "+str(len(samples)))
+    indexer = 1
     for sample_item in samples:
         try:
+            logger("++++++ Progress : "+sample_item[1]+" -> "+str(indexer)+"/"+str(len(samples)))
+            indexer=indexer+1
             # Generate Opcode Seq for every sample
             logger("Start Sample : " + sample_item[1])
             if sample_item[1].endswith(".apk"):
@@ -254,8 +253,24 @@ def opcode_sequence_generator(repo, dump_method_dir):
             print e
     mal_class = weight_function(sample_mal_opcode_sequence, sample_mal_opcode, unique_opcode_sequence)
     bin_class = weight_function(sample_bin_opcode_sequence, sample_bin_opcode, unique_opcode_sequence)
-    write_arff(repo + 'result.arff', mal_class, bin_class)
+    for top_count in range(1,100):
+        mal_class_sum = featureSelection(mal_class,unique_opcode_sequence,top_count*10)
+        bin_class_sum = featureSelection(bin_class,unique_opcode_sequence,top_count*10)
+        write_arff(repo + 'result'+str(top_count*10)+'.arff', mal_class, bin_class,mal_class_sum+bin_class_sum)
 
+
+def featureSelection(dataSet,uniq_opcode_seq,top_count):
+    sum = 0.0
+    result= {}
+    for opc in uniq_opcode_seq:
+        for dataSet_sample in dataSet:
+            if (opc in dataSet_sample):
+                sum =  sum + dataSet_sample[opc] 
+        result[opc] = sum
+        sum=0.0
+    sorted_x = sorted(result.items(), key=operator.itemgetter(1),reverse=True)    
+    return sorted_x[:top_count]
+    #return {k: v for k, v in sorted(result.items(), key=lambda item: item[1])}
 
 def logger(tag):
     now = datetime.now()
