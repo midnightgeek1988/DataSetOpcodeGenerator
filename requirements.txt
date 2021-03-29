@@ -24,7 +24,7 @@ ptyprocess==0.6.0
 pyasn1==0.4.8
 pycparser==2.19
 pydot==1.4.1
-Pygments==2.5.2
+Pygments==2.7.4
 pyparsing==2.4.5
 pytz==2019.3
 scandir==1.10.0
